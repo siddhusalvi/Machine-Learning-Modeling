@@ -1,35 +1,53 @@
 import java.io.FileWriter
+import org.apache.hadoop.fs.{FileSystem, FileUtil, Path}
 import org.apache.spark.sql.SparkSession
 import settings.Configuration
 import scala.collection.mutable.ListBuffer
 
 object stockmodel {
   def main(args: Array[String]): Unit = {
+    try {
+      val spark = SparkSession.builder().appName("Stock_prediction").master("local").getOrCreate()
 
-    val spark = SparkSession.builder().appName("Stock_prediction").master("local").getOrCreate()
-    val bucket = "marketdatas"
-    val file = "stockdata.csv"
-    val config = new Configuration
-    config.Configure(spark)
-    val text = spark.read.textFile("s3a://" + bucket + "/" + file)
-    var data = ListBuffer[String]()
-    for (line: String <- text.collect()) {
-      data += line
+      //setting hadoop configuration
+      val config = new Configuration
+      config.Configure(spark)
+
+      //Getting s3 file contents
+      val bucket = "marketdatas"
+      val file = "stockdata.csv"
+      val text = spark.read.textFile("s3a://" + bucket + "/" + file)
+      var data = ListBuffer[String]()
+      for (line: String <- text.collect()) {
+        data += line
+      }
+      val path = "C:\\Users\\Siddesh\\IdeaProjects\\stockdata\\src\\resources\\"
+      val input_path = path + file
+
+      //Saving csv file on local storage
+      val writer = new FileWriter(input_path, true)
+      data.foreach(c => writer.write(c.toString + "\n"))
+      writer.close()
+
+      //creating list to inject data into python script
+      val command = "python " + path + "stockprice.py"
+      val pkl_file = "output.pkl"
+
+      val cli_input = spark.sparkContext.parallelize(List(input_path, path + pkl_file))
+      val operation = cli_input.pipe(command)
+      val python_output = operation.collect()
+
+      //printing python script output
+      python_output.foreach(println(_))
+
+      //saving pkl file on s3
+      val source = new Path(path + pkl_file)
+      val srcFs = FileSystem.get(source.toUri, spark.sparkContext.hadoopConfiguration)
+      val dest = new Path("s3a://" + bucket + "//")
+      val dstFs = FileSystem.get(dest.toUri, spark.sparkContext.hadoopConfiguration)
+      FileUtil.copy(srcFs, source, dstFs, dest, false, false, spark.sparkContext.hadoopConfiguration)
+    } catch {
+      case _ => println("Unknown Error occured!")
     }
-    val output_path = "C:\\Users\\Siddesh\\IdeaProjects\\stockdata\\src\\resources\\" + file
-    val writer = new FileWriter(output_path, true)
-    //Saving csv file on local storage
-    data.foreach(c => writer.write(c.toString + "\n"))
-    writer.close()
-
-    val script = "python C:\\Users\\Siddesh\\IdeaProjects\\stockdata\\src\\resources\\stockprice.py"
-    val pkl_file = "C:\\Users\\Siddesh\\IdeaProjects\\stockdata\\src\\resources\\output.pkl"
-    val command = script
-    //creating dummy RDD to pipe python script
-    val dummy_data = spark.sparkContext.parallelize(List(output_path, pkl_file))
-    val operation = dummy_data.pipe(command)
-    val python_output = operation.collect()
-    //printing python script output
-    python_output.foreach(println(_))
   }
 }
