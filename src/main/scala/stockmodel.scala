@@ -40,6 +40,9 @@ object stockmodel {
       val dstFs = FileSystem.get(dest.toUri, spark.sparkContext.hadoopConfiguration)
       FileUtil.copy(srcFs, source, dstFs, dest, false, false, spark.sparkContext.hadoopConfiguration)
     } catch {
+
+      case exception1 : NoSuchMethodError => println(exception1)
+      case exception2: ClassNotFoundException => println(exception2)
       case _ => println("Unknown Error occured!")
     }
   }
