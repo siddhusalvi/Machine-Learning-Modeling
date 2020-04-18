@@ -16,18 +16,11 @@ object stockmodel {
       //Getting s3 file contents
       val bucket = "marketdatas"
       val file = "stockdata.csv"
-      val text = spark.read.textFile("s3a://" + bucket + "/" + file)
-      var data = ListBuffer[String]()
-      for (line: String <- text.collect()) {
-        data += line
-      }
       val path = "C:\\Users\\Siddesh\\IdeaProjects\\stockdata\\src\\resources\\"
-      val input_path = path + file
 
-      //Saving csv file on local storage
-      val writer = new FileWriter(input_path, true)
-      data.foreach(c => writer.write(c.toString + "\n"))
-      writer.close()
+      //saving s3 file locally
+      downloadFile(spark, bucket, file, path)
+      val input_path = path + file
 
       //creating list to inject data into python script
       val command = "python " + path + "stockprice.py"
@@ -49,5 +42,18 @@ object stockmodel {
     } catch {
       case _ => println("Unknown Error occured!")
     }
+  }
+
+  def downloadFile(spark: SparkSession, bucket: String, file: String, path: String): Unit = {
+    val text = spark.read.textFile("s3a://" + bucket + "/" + file)
+    var data = ListBuffer[String]()
+    for (line: String <- text.collect()) {
+      data += line
+    }
+    val input_path = path + file
+    //Saving csv file on local storage
+    val writer = new FileWriter(input_path, true)
+    data.foreach(c => writer.write(c.toString + "\n"))
+    writer.close()
   }
 }
